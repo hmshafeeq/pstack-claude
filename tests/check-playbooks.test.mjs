@@ -50,6 +50,32 @@ describe("project playbooks", () => {
     expect(result).toEqual({ code: 0, out: "Every project playbook matches this pstack's playbooks.\n" });
   });
 
+  test("a playbook for another stack is skipped, and one for this stack is checked", () => {
+    const result = run({
+      "coding.md": '---\nstack: shastack\nextends: coding\nwhen: Use it for code.\n---\n- **In** "Run the suite": run it once.\n',
+      "fix.md": '---\nstack: "pstack"\nextends: bug-fix\nwhen: Use it to fix.\n---\n- **After** "Ask the user to reproduce it": compare.\n',
+    });
+    expect(result).toEqual({ code: 1, out: '.agents/playbooks/fix.md: "Ask the user to reproduce it" is not in any playbook it extends\n' });
+  });
+
+  test("an unknown stack value is reported, not skipped", () => {
+    const result = run({ "coding.md": "---\nstack: shastak\nextends: coding\nwhen: Use it for code.\n---\n" });
+    expect(result).toEqual({
+      code: 1,
+      out: '.agents/playbooks/coding.md: "stack: shastak" names no known stack; use pstack, shastack, or both\n',
+    });
+  });
+
+  test("a stack: both playbook must be standalone", () => {
+    const ok = run({ "status.md": "---\nstack: both\nextends:\nwhen: Use it in long runs.\n---\nPost a status line.\n" });
+    expect(ok).toEqual({ code: 0, out: "Every project playbook matches this pstack's playbooks.\n" });
+    const bad = run({ "status.md": "---\nstack: both\nextends: bug-fix\nwhen: Use it in long runs.\n---\n" });
+    expect(bad).toEqual({
+      code: 1,
+      out: '.agents/playbooks/status.md: a "stack: both" playbook must be standalone, with an empty "extends:"\n',
+    });
+  });
+
   test("an unknown base, step text the base does not say, and an unquoted change all fail", () => {
     const result = run({
       "bug-fix.md": '---\nextends: bug-fix\nwhen: Use it for any bug report.\n---\n- **After** "Ask the user to reproduce it": compare with main.\n',
