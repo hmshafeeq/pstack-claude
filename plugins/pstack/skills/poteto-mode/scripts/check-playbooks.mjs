@@ -26,6 +26,10 @@ export function checkPlaybooks(root, bundled = BUNDLED) {
     const front = text.match(/^---[ \t]*\n([\s\S]*?)\n---[ \t]*(?:\n|$)/)?.[1] ?? "";
     const field = (fieldName) => front.match(new RegExp(`^${fieldName}:[ \\t]*(.*)$`, "m"))?.[1].trim() ?? "";
     const stack = yamlScalar(field("stack")) || STACK;
+    if (!["pstack", "shastack", "both"].includes(stack)) {
+      problems.push(`${path}: "stack: ${stack}" names no known stack; use pstack, shastack, or both`);
+      continue;
+    }
     if (stack !== STACK && stack !== "both") continue;
     if (!yamlScalar(field("when"))) problems.push(`${path}: its frontmatter needs a "when:" line`);
     const bases = field("extends")

@@ -58,6 +58,14 @@ describe("project playbooks", () => {
     expect(result).toEqual({ code: 1, out: '.agents/playbooks/fix.md: "Ask the user to reproduce it" is not in any playbook it extends\n' });
   });
 
+  test("an unknown stack value is reported, not skipped", () => {
+    const result = run({ "coding.md": "---\nstack: shastak\nextends: coding\nwhen: Use it for code.\n---\n" });
+    expect(result).toEqual({
+      code: 1,
+      out: '.agents/playbooks/coding.md: "stack: shastak" names no known stack; use pstack, shastack, or both\n',
+    });
+  });
+
   test("a stack: both playbook must be standalone", () => {
     const ok = run({ "status.md": "---\nstack: both\nextends:\nwhen: Use it in long runs.\n---\nPost a status line.\n" });
     expect(ok).toEqual({ code: 0, out: "Every project playbook matches this pstack's playbooks.\n" });
