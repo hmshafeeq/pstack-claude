@@ -6,6 +6,9 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const BUNDLED = resolve(dirname(fileURLToPath(import.meta.url)), "../playbooks");
+// A playbook folder can serve more than one skill stack. A file's `stack:` line names the stack it
+// is for; no line means this one. `both` is for a standalone playbook that extends nothing.
+const STACK = "pstack";
 const CHANGE = /^\s*(?:[-*]|\d+\.)\s+\*\*(?:After|Before|Replace|In)\*\*\s+"([^"]+)"/;
 const CHANGE_VERB = /^\s*(?:[-*]|\d+\.)\s+\*\*(?:After|Before|Replace|In)\*\*/;
 const flat = (text) => text.replace(/\s+/g, " ");
@@ -22,6 +25,8 @@ export function checkPlaybooks(root, bundled = BUNDLED) {
     // YAML allows trailing blanks on a delimiter and a closing one at the end of the file.
     const front = text.match(/^---[ \t]*\n([\s\S]*?)\n---[ \t]*(?:\n|$)/)?.[1] ?? "";
     const field = (fieldName) => front.match(new RegExp(`^${fieldName}:[ \\t]*(.*)$`, "m"))?.[1].trim() ?? "";
+    const stack = yamlScalar(field("stack")) || STACK;
+    if (stack !== STACK && stack !== "both") continue;
     if (!yamlScalar(field("when"))) problems.push(`${path}: its frontmatter needs a "when:" line`);
     const bases = field("extends")
       .replace(/^\[(.*)\]$/, "$1")
@@ -33,6 +38,9 @@ export function checkPlaybooks(root, bundled = BUNDLED) {
         const known = !/[\\/]/.test(stem) && existsSync(file);
         return { stem, text: known ? readFileSync(file, "utf8") : null };
       });
+    if (stack === "both" && bases.length > 0) {
+      problems.push(`${path}: a "stack: both" playbook must be standalone, with an empty "extends:"`);
+    }
     for (const base of bases) {
       if (base.text === null) problems.push(`${path}: extends \`${base.stem}\`, which this pstack has no playbook for`);
     }
