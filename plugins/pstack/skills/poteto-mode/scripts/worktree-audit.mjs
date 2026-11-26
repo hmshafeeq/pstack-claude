@@ -53,12 +53,26 @@ export const DISPOSABLE = new Set([
   "coverage", "DerivedData", "dist", "node_modules", "target", "venv",
 ]);
 
+// An ignored path whose name matches a forbidden secret pattern: a dotenv
+// file other than `.env.example`, a key or certificate, an `id_` file, a
+// service account file, or anything under `secrets/` or `credentials/`.
+export function isSecretPath(path) {
+  const parts = path.replace(/\/$/, "").split("/");
+  const name = parts.at(-1);
+  return (/^\.env/.test(name) && name !== ".env.example")
+    || /\.(pem|key|p12)$/.test(name)
+    || /^id_/.test(name)
+    || /^service-account.*\.json$/.test(name)
+    || parts.slice(0, -1).some((part) => part === "secrets" || part === "credentials");
+}
+
 export function classify(facts) {
   const { locked, dirty, orphans, pr, recent, ancestry, head } = facts;
   if (locked.known && locked.value !== null) return "hold-locked";
   if (dirty.known && dirty.value.wip > 0) return "hold-wip";
   if (dirty.known && dirty.value.untracked > 0) return "hold-untracked";
   if (orphans.known && orphans.value > 0) return "hold-reflog";
+  if (dirty.known && dirty.value.secret > 0) return "hold-secret";
   if (dirty.known && dirty.value.ignored > 0) return "hold-ignored";
   if (pr.known && pr.value?.state === "OPEN") return "hold-open-pr";
   if (recent.known && recent.value) return "verify-recent-chat";
@@ -286,11 +300,15 @@ function dirtyState(path) {
     .split("\n").filter(Boolean);
   const untracked = lines.filter((line) => line.startsWith("??")).length;
   const ignoredLines = lines.filter((line) => line.startsWith("!!"));
-  const ignored = ignoredLines.filter((line) => {
-    const parts = line.slice(3).replace(/^"|"$/g, "").split("/");
-    return !parts.some((part) => DISPOSABLE.has(part));
-  }).length;
-  return { wip: lines.length - untracked - ignoredLines.length, untracked, ignored };
+  const kept = ignoredLines
+    .map((line) => line.slice(3).replace(/^"|"$/g, ""))
+    .filter((entry) => !entry.split("/").some((part) => DISPOSABLE.has(part)));
+  // An ignored folder prints as one line, so list the files inside it by name.
+  const names = kept.flatMap((entry) => entry.endsWith("/")
+    ? git(path, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--", entry).split("\0").filter(Boolean)
+    : [entry]);
+  const secret = names.filter((name) => !name.split("/").some((part) => DISPOSABLE.has(part)) && isSecretPath(name)).length;
+  return { wip: lines.length - untracked - ignoredLines.length, untracked, ignored: kept.length, secret };
 }
 
 // Counts commits that only this worktree's HEAD reflog reaches, which
@@ -333,11 +351,12 @@ function sizeKey(label) {
   return Number(match[1]) * 1024 ** (match[2] ? "KMGTPE".indexOf(match[2]) + 1 : 0);
 }
 
-function dirtyLabel({ wip, untracked, ignored }, orphans) {
+function dirtyLabel({ wip, untracked, ignored, secret }, orphans) {
   return [
     wip > 0 && `wip:${wip}`,
     untracked > 0 && `untracked:${untracked}`,
     ignored > 0 && `ignored:${ignored}`,
+    secret > 0 && `secret:${secret}`,
     orphans.known && orphans.value > 0 && `reflog:${orphans.value}`,
   ].filter(Boolean).join(",") || "clean";
 }
