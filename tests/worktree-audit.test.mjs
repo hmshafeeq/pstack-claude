@@ -310,12 +310,13 @@ test("a secret file inside an ignored folder is named as secret, other ignored f
   const keys = addWorktree(fixture, "keys");
   mkdirSync(join(keys, "storage"), { recursive: true });
   writeFileSync(join(keys, "storage/oauth-private.key"), "decoy\n");
+  writeFileSync(join(keys, "storage/clé.pem"), "decoy\n");
   writeFileSync(join(keys, "storage/cache.json"), "{}\n");
   const plain = addWorktree(fixture, "plain");
   writeFileSync(join(plain, "notes.local.md"), "notes\n");
   writeFileSync(join(plain, ".env.example"), "TOKEN=\n");
   const { rows } = runAudit(fixture);
-  expect([rowFor(rows, keys)[3], rowFor(rows, keys)[7]]).toEqual(["ignored:1,secret:1", "hold-secret"]);
+  expect([rowFor(rows, keys)[3], rowFor(rows, keys)[7]]).toEqual(["ignored:1,secret:2", "hold-secret"]);
   expect([rowFor(rows, plain)[3], rowFor(rows, plain)[7]]).toEqual(["ignored:2", "hold-ignored"]);
 });
 

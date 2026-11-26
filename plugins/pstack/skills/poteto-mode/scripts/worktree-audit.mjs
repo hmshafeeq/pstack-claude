@@ -305,7 +305,7 @@ function dirtyState(path) {
     .filter((entry) => !entry.split("/").some((part) => DISPOSABLE.has(part)));
   // An ignored folder prints as one line, so list the files inside it by name.
   const names = kept.flatMap((entry) => entry.endsWith("/")
-    ? git(path, "ls-files", "--others", "--ignored", "--exclude-standard", "--", entry).split("\n").filter(Boolean)
+    ? git(path, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--", entry).split("\0").filter(Boolean)
     : [entry]);
   const secret = names.filter((name) => !name.split("/").some((part) => DISPOSABLE.has(part)) && isSecretPath(name)).length;
   return { wip: lines.length - untracked - ignoredLines.length, untracked, ignored: kept.length, secret };
