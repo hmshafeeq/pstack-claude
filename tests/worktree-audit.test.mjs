@@ -82,6 +82,7 @@ describe("classify", () => {
     ["untracked files only", { ...ancestor, dirty: untracked }, "hold-untracked"],
     ["tracked and untracked work", { ...ancestor, dirty: known({ wip: 1, untracked: 2, ignored: 0 }) }, "hold-wip"],
     ["ignored files outside build and cache directories", { ...ancestor, dirty: ignored }, "hold-ignored"],
+    ["an ignored secret file", { ...ancestor, dirty: known({ wip: 0, untracked: 0, ignored: 1, secret: 1 }) }, "hold-secret"],
     ["untracked and ignored files", { ...ancestor, dirty: known({ wip: 0, untracked: 2, ignored: 1 }) }, "hold-untracked"],
     ["commits only the HEAD reflog keeps", { ...ancestor, orphans }, "hold-reflog"],
     ["reflog-only commits and ignored files", { ...ancestor, dirty: ignored, orphans }, "hold-reflog"],
@@ -287,6 +288,7 @@ test("a status.showUntrackedFiles=no config does not hide untracked files from t
 
 test("an ignored file outside build and cache directories holds the worktree, ignored dependencies do not", () => {
   const fixture = createFixture();
+  mkdirSync(join(fixture.repo, ".git/info"), { recursive: true });
   writeFileSync(join(fixture.repo, ".git/info/exclude"), ".env\nnode_modules/\n");
   const secrets = addWorktree(fixture, "secrets");
   writeFileSync(join(secrets, ".env"), "TOKEN=only-here\n");
@@ -297,8 +299,24 @@ test("an ignored file outside build and cache directories holds the worktree, ig
   }
   const { rows } = runAudit(fixture);
   const row = (worktree) => rowFor(rows, worktree);
-  expect([row(secrets)[3], row(secrets)[7]]).toEqual(["ignored:1", "hold-ignored"]);
+  expect([row(secrets)[3], row(secrets)[7]]).toEqual(["ignored:1,secret:1", "hold-secret"]);
   expect([row(deps)[3], row(deps)[7]]).toEqual(["clean", "safe"]);
+});
+
+test("a secret file inside an ignored folder is named as secret, other ignored files are not", () => {
+  const fixture = createFixture();
+  mkdirSync(join(fixture.repo, ".git/info"), { recursive: true });
+  writeFileSync(join(fixture.repo, ".git/info/exclude"), "storage/\nnotes.local.md\n.env.example\n");
+  const keys = addWorktree(fixture, "keys");
+  mkdirSync(join(keys, "storage"), { recursive: true });
+  writeFileSync(join(keys, "storage/oauth-private.key"), "decoy\n");
+  writeFileSync(join(keys, "storage/cache.json"), "{}\n");
+  const plain = addWorktree(fixture, "plain");
+  writeFileSync(join(plain, "notes.local.md"), "notes\n");
+  writeFileSync(join(plain, ".env.example"), "TOKEN=\n");
+  const { rows } = runAudit(fixture);
+  expect([rowFor(rows, keys)[3], rowFor(rows, keys)[7]]).toEqual(["ignored:1,secret:1", "hold-secret"]);
+  expect([rowFor(rows, plain)[3], rowFor(rows, plain)[7]]).toEqual(["ignored:2", "hold-ignored"]);
 });
 
 test("a commit only the worktree's HEAD reflog reaches holds it, a rebased branch's old tip does not", () => {
